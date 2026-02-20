@@ -1,5 +1,6 @@
 package frc.robot;
 
+
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
 
@@ -20,7 +21,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.util.Color8Bit;
 import java.util.HashMap;
-import java.util.List;
+//import java.util.List;
 import java.util.Map;
 
 public class Telemetry {
@@ -59,7 +60,7 @@ public class Telemetry {
     private final DoubleArrayPublisher fieldPub = table.getDoubleArrayTopic("robotPose").publish();
     private final StringPublisher fieldTypePub = table.getStringTopic(".type").publish();
 
-    /* Table to publish named paths for Shuffleboard/Path visualizers */
+    /* Table to publish named paths for Shuffleboard/Path visualizers */ //LAST THING NEEDED FOR AUTO?
     private final NetworkTable pathsTable = inst.getTable("Paths");
     private final Map<String, DoubleArrayPublisher> m_pathPublishers = new HashMap<>();
     private final Map<String, StringPublisher> m_pathTypePublishers = new HashMap<>();
@@ -125,46 +126,5 @@ public class Telemetry {
             m_moduleDirections[i].setAngle(state.ModuleStates[i].angle);
             m_moduleSpeeds[i].setLength(state.ModuleStates[i].speedMetersPerSecond / (2 * MaxSpeed));
         }
-    }
-
-    /**
-     * Publish a named path (array of Pose2d waypoints) to NetworkTables so it can be
-     * shown in Shuffleboard or other visualizers. The path is published as a flat
-     * double array [x0, y0, thetaDeg0, x1, y1, thetaDeg1, ...].
-     *
-     * @param name name of the path to publish (will appear under the "Paths" table)
-     * @param waypoints array of waypoints making up the path
-     */
-    public void publishPath(String name, Pose2d[] waypoints) {
-        if (waypoints == null) {
-            return;
-        }
-
-        // Ensure publishers exist for this named path
-        NetworkTable pathTable = pathsTable.getSubTable(name);
-        DoubleArrayPublisher pub = m_pathPublishers.computeIfAbsent(name, k -> pathTable.getDoubleArrayTopic("Path").publish());
-        StringPublisher typePub = m_pathTypePublishers.computeIfAbsent(name, k -> pathTable.getStringTopic(".type").publish());
-
-        // Set type so some dashboard widgets know how to render it
-        typePub.set("Path");
-
-        double[] flat = new double[waypoints.length * 3];
-        for (int i = 0; i < waypoints.length; ++i) {
-            flat[i * 3] = waypoints[i].getX();
-            flat[i * 3 + 1] = waypoints[i].getY();
-            flat[i * 3 + 2] = waypoints[i].getRotation().getDegrees();
-        }
-
-        pub.set(flat);
-    }
-
-    /**
-     * Convenience overload that accepts a List of Pose2d.
-     */
-    public void publishPath(String name, List<Pose2d> waypoints) {
-        if (waypoints == null) {
-            return;
-        }
-        publishPath(name, waypoints.toArray(new Pose2d[0]));
     }
 }
