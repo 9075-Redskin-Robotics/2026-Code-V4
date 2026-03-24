@@ -14,6 +14,9 @@ import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.commands.FollowPathCommand;
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -25,15 +28,23 @@ import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.LiftSubsystem;
+import frc.robot.subsystems.Limelight;
 import frc.robot.subsystems.ShooterSubsystem;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 
 public class RobotContainer {
+    private static final double kSnapHeadingToleranceDegrees = 3.0;
+    private static final Translation2d kBlueHopperPosition = new Translation2d(
+        Units.inchesToMeters(182.11),
+        Units.inchesToMeters(158.85));
+    private static final double kFieldLengthMeters = Units.inchesToMeters(690.876);
+
     private final IntakeSubsystem intake = new IntakeSubsystem();
     private final ShooterSubsystem shooter = new ShooterSubsystem();
     private final LiftSubsystem lift = new LiftSubsystem();
+    private final Limelight shooterLimelight = new Limelight();
     private final CommandXboxController driver = new CommandXboxController(1);
     private final CommandXboxController opperator = new CommandXboxController(0);
 
@@ -45,6 +56,10 @@ public class RobotContainer {
     private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
             .withDeadband(maxSpeed * 0.4).withRotationalDeadband(maxAngularRate * 0.1) // Add a 10% deadband
             .withDriveRequestType(DriveRequestType.OpenLoopVoltage); // Use open-loop control for drive motors
+    private final SwerveRequest.FieldCentricFacingAngle faceAwayFromHopper = new SwerveRequest.FieldCentricFacingAngle()
+            .withDeadband(maxSpeed * 0.4)
+            .withRotationalDeadband(maxAngularRate * 0.1)
+            .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
     private final SwerveRequest.SwerveDriveBrake brake = new SwerveRequest.SwerveDriveBrake();
     private final SwerveRequest.PointWheelsAt point = new SwerveRequest.PointWheelsAt();
     private final Telemetry logger = new Telemetry(maxSpeed);
@@ -55,6 +70,9 @@ public class RobotContainer {
     private final SendableChooser<Command> autoChooser;
 
     public RobotContainer() {
+        faceAwayFromHopper.HeadingController.setPID(7, 0, 0);
+        faceAwayFromHopper.HeadingController.enableContinuousInput(-Math.PI, Math.PI);
+
         registerCommands();
         
         autoChooser = AutoBuilder.buildAutoChooser("Tests");
@@ -68,11 +86,17 @@ public class RobotContainer {
         FollowPathCommand.warmupCommand().schedule();
     }
     private void configureBindings() {
-    // Fast Shooter
+    // Auto shooter speed based on Limelight distance
         opperator.leftTrigger()
-            .whileTrue(Commands.run(() -> shooter.run(1), shooter))
+            .whileTrue(Commands.run(() -> {
+                if (shooterLimelight.hasTarget()) {
+                    shooter.runForDistance(shooterLimelight.getTargetDistanceMeters());
+                } else {
+                    shooter.stop();
+                }
+            }, shooter))
             .onFalse(Commands.runOnce(shooter::stop, shooter));
-    // Medium Shooter
+    // Fast Shooter
         opperator.leftBumper()
             .whileTrue(Commands.run(() -> shooter.run(.75), shooter))
             .onFalse(Commands.runOnce(shooter::stop, shooter));
@@ -103,6 +127,8 @@ public class RobotContainer {
         opperator.povDown()
             .onTrue(new InstantCommand(() -> lift.climbUp(1)))
             .onFalse(new InstantCommand(() -> lift.stop()));
+    // Snap to face away from hopper
+        opperator.x().onTrue(createSnapAwayFromHopperCommand());
         
     // Drivetrain Speed Control with Boost
         drivetrain.setDefaultCommand(
@@ -145,6 +171,13 @@ public class RobotContainer {
     private void registerCommands() {
         NamedCommands.registerCommand("Intake", (Commands.run(() -> intake.run(-1), intake)));
         NamedCommands.registerCommand("Shoot", (Commands.run(() -> shooter.run(0.6), shooter)));
+        NamedCommands.registerCommand("AutoShoot", Commands.run(() -> {
+            if (shooterLimelight.hasTarget()) {
+                shooter.runForDistance(shooterLimelight.getTargetDistanceMeters());
+            } else {
+                shooter.stop();
+            }
+        }, shooter));
         NamedCommands.registerCommand("SlowShoot", (Commands.run(() -> shooter.run(0.3), shooter)));
         NamedCommands.registerCommand("StopShoot", (Commands.run(() -> shooter.run(0), shooter)));
         NamedCommands.registerCommand("IntakeStop", (Commands.run(() -> intake.run(0), intake)));
@@ -169,5 +202,42 @@ public class RobotContainer {
     public Command getAutonomousCommand() {
         /* Run the path selected from the auto chooser */
         return autoChooser.getSelected();
+    }
+
+    private Rotation2d getHeadingAwayFromHopper() {
+        Translation2d hopperPosition = getHopperFieldPosition();
+        Translation2d robotPosition = drivetrain.getState().Pose.getTranslation();
+        Translation2d robotToHopper = hopperPosition.minus(robotPosition);
+
+        if (robotToHopper.getNorm() < 1e-6) {
+            return drivetrain.getState().Pose.getRotation();
+        }
+
+        return robotToHopper.getAngle().plus(Rotation2d.k180deg);
+    }
+
+    private Command createSnapAwayFromHopperCommand() {
+        Rotation2d targetHeading = getHeadingAwayFromHopper();
+
+        return drivetrain.applyRequest(() -> faceAwayFromHopper
+                .withVelocityX(0.0)
+                .withVelocityY(0.0)
+                .withTargetDirection(targetHeading))
+            .until(() -> Math.abs(
+                drivetrain.getState().Pose.getRotation().minus(targetHeading).getDegrees())
+                < kSnapHeadingToleranceDegrees);
+    }
+
+    private Translation2d getHopperFieldPosition() {
+        boolean isRedAlliance = DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
+            == DriverStation.Alliance.Red;
+
+        if (!isRedAlliance) {
+            return kBlueHopperPosition;
+        }
+
+        return new Translation2d(
+            kFieldLengthMeters - kBlueHopperPosition.getX(),
+            kBlueHopperPosition.getY());
     }
 }
