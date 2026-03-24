@@ -171,10 +171,14 @@ out/
 # Simulation GUI and other tools window save file
 networktables.json
 simgui.json
+simgui-ds.json
 *-window.json
 
 # Simulation data log directory
 logs/
+
+# Local Gradle user data
+.gradle-user/
 
 # Folder that has CTRE Phoenix Sim device config storage
 ctre_sim/

@@ -21,8 +21,8 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.util.Color8Bit;
 import java.util.HashMap;
-//import java.util.List;
 import java.util.Map;
+import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 
 public class Telemetry {
     private final double MaxSpeed;
@@ -41,6 +41,8 @@ public class Telemetry {
             SmartDashboard.putData("Module " + i, m_moduleMechanisms[i]);
         }
     }
+    private Field2d field = new Field2d();
+
 
     /* What to publish over networktables for telemetry */
     private final NetworkTableInstance inst = NetworkTableInstance.getDefault();
@@ -57,13 +59,11 @@ public class Telemetry {
 
     /* Robot pose for field positioning */
     private final NetworkTable table = inst.getTable("Pose");
-    private final DoubleArrayPublisher fieldPub = table.getDoubleArrayTopic("robotPose").publish();
     private final StringPublisher fieldTypePub = table.getStringTopic(".type").publish();
 
     /* Table to publish named paths for Shuffleboard/Path visualizers */ //LAST THING NEEDED FOR AUTO?
     private final NetworkTable pathsTable = inst.getTable("Paths");
     private final Map<String, DoubleArrayPublisher> m_pathPublishers = new HashMap<>();
-    private final Map<String, StringPublisher> m_pathTypePublishers = new HashMap<>();
 
     /* Mechanisms to represent the swerve module states */
     private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
@@ -103,6 +103,8 @@ public class Telemetry {
         driveModulePositions.set(state.ModulePositions);
         driveTimestamp.set(state.Timestamp);
         driveOdometryFrequency.set(1.0 / state.OdometryPeriod);
+        fieldTypePub.set("Field2d");
+        field.setRobotPose(state.Pose);
 
         /* Also write to log file */
         SignalLogger.writeStruct("DriveState/Pose", Pose2d.struct, state.Pose);
@@ -114,7 +116,8 @@ public class Telemetry {
 
         /* Telemeterize the pose to a Field2d */
         fieldTypePub.set("Field2d");
-
+        DoubleArrayPublisher fieldPub =
+            m_pathPublishers.computeIfAbsent("RobotPose", name -> pathsTable.getDoubleArrayTopic(name).publish());  
         m_poseArray[0] = state.Pose.getX();
         m_poseArray[1] = state.Pose.getY();
         m_poseArray[2] = state.Pose.getRotation().getDegrees();

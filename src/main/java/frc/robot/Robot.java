@@ -6,6 +6,8 @@ package frc.robot;
 
 import com.ctre.phoenix6.HootAutoReplay;
 
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.cscore.UsbCamera;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -51,6 +53,7 @@ public class Robot extends TimedRobot {
                 m_robotContainer.drivetrain.addVisionMeasurement(llMeasurement.pose, llMeasurement.timestampSeconds);
             }
         }
+
     }
 
     @Override
@@ -63,6 +66,12 @@ public class Robot extends TimedRobot {
     public void disabledExit() {}
 
     @Override
+    public void robotInit() {
+        UsbCamera displayCamera = CameraServer.startAutomaticCapture(0);
+        displayCamera.setResolution(640, 480);
+        displayCamera.setFPS(15);
+
+    }
     public void autonomousInit() {
         m_autonomousCommand = m_robotContainer.getAutonomousCommand();
 
